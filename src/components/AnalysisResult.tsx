@@ -1,10 +1,5 @@
-import { useState } from 'react';
-import {
-  explainRisk,
-  humanizeSignal,
-  recommendationCopy,
-  type AnalysisResult as AnalysisResultType,
-} from '../domain/analysis';
+import { useRef, useState, type CSSProperties } from 'react';
+import { explainRisk, humanizeSignal, recommendationCopy, type AnalysisResult as AnalysisResultType } from '../domain/analysis';
 
 interface AnalysisResultProps {
   result: AnalysisResultType;
@@ -13,116 +8,77 @@ interface AnalysisResultProps {
   onReset: () => void;
 }
 
-function percentage(value: number): string {
-  return `${Math.round(value * 100)}%`;
-}
+function percentage(value: number) { return `${Math.round(value * 100)}%`; }
+function riskTone(level: AnalysisResultType['riskLevel']) { return level === 'HIGH' ? 'danger' : level === 'MEDIUM' ? 'warning' : 'safe'; }
 
 export function AnalysisResult({ result, evidenceHash, isDemo, onReset }: AnalysisResultProps) {
+  const reasoningDialogRef = useRef<HTMLDialogElement>(null);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const tone = riskTone(result.riskLevel);
+  const gaugeStyle = { '--risk-angle': `${Math.max(0, Math.min(100, result.riskScore)) * 3.6}deg` } as CSSProperties;
 
   const copyHash = async () => {
-    try {
-      await navigator.clipboard.writeText(evidenceHash);
-      setCopyStatus('copied');
-      window.setTimeout(() => setCopyStatus('idle'), 1500);
-    } catch {
-      setCopyStatus('failed');
-    }
+    try { await navigator.clipboard.writeText(evidenceHash); setCopyStatus('copied'); }
+    catch { setCopyStatus('failed'); }
+    window.setTimeout(() => setCopyStatus('idle'), 1700);
   };
 
+  const verdict = isDemo
+    ? 'High-risk scenario preview'
+    : result.riskLevel === 'HIGH' ? 'Possible voice impersonation'
+      : result.riskLevel === 'MEDIUM' ? 'Manual verification advised'
+        : 'No strong spoofing signal';
+
   return (
-    <section className="results" aria-labelledby="result-title">
-      <div className="result-header">
-        <div>
-          <p className="eyebrow">Voice integrity result</p>
-          <h2 id="result-title">Risk assessment complete</h2>
+    <section className="result-experience screen-enter" aria-labelledby="result-title">
+      <header className="result-topline">
+        <div><span className="section-kicker">{isDemo ? 'Simulation complete' : 'Analysis complete'}</span><h1 id="result-title">Voice verdict</h1></div>
+        <button className="glass-button" type="button" onClick={onReset}>New scan</button>
+      </header>
+
+      {isDemo && <div className="simulation-strip"><span>SIM</span><p><strong>Not model output.</strong> This fixed scenario was not calculated from your uploaded audio.</p></div>}
+
+      <div className={`verdict-stage verdict-stage--${tone}`}>
+        <div className="verdict-glow" aria-hidden="true" />
+        <div className="result-gauge" style={gaugeStyle}>
+          <div className="result-gauge-inner"><small>{isDemo ? 'Scenario' : 'Risk score'}</small><strong>{Math.round(result.riskScore)}</strong><span>/100</span></div>
         </div>
-        <div className="result-actions">
-          {isDemo && <span className="mode-chip">Demo data</span>}
-          <button className="ghost-button" type="button" onClick={onReset}>New analysis</button>
+        <div className="verdict-copy">
+          <span className={`verdict-pill verdict-pill--${tone}`}>{isDemo ? 'Preview' : `${result.riskLevel} risk`}</span>
+          <h2>{verdict}</h2>
+          <p>{isDemo ? 'A preview of how the product presents a suspicious call once live inference is available.' : recommendationCopy(result.recommendation)}</p>
+          <button className="reasoning-button" type="button" onClick={() => reasoningDialogRef.current?.showModal()}>View reasoning <span>↗</span></button>
         </div>
       </div>
 
-      {isDemo && (
-        <div className="demo-banner" role="note">
-          This screen is using the frozen mock response until the team backend is connected. No model claim is being made from this value.
-        </div>
-      )}
-
-      <div className="result-grid">
-        <article className={`risk-card risk-card--${result.riskLevel.toLowerCase()}`}>
-          <span>Overall risk</span>
-          <strong>{Math.round(result.riskScore)}</strong>
-          <div>
-            <b>{result.riskLevel} RISK</b>
-            <small>out of 100</small>
-          </div>
-        </article>
-
-        <article className="signal-card">
-          <span className="signal-label">Deepfake probability</span>
-          <strong>{percentage(result.deepfakeProbability)}</strong>
-          <div className="meter" aria-label={`Deepfake probability ${percentage(result.deepfakeProbability)}`}>
-            <span style={{ width: percentage(result.deepfakeProbability) }} />
-          </div>
-          <small>Synthetic or manipulated speech likelihood</small>
-        </article>
-
-        <article className="signal-card">
-          <span className="signal-label">Speaker similarity</span>
-          <strong>{result.speakerSimilarity === null ? 'N/A' : percentage(result.speakerSimilarity)}</strong>
-          {result.speakerSimilarity !== null ? (
-            <div className="meter" aria-label={`Speaker similarity ${percentage(result.speakerSimilarity)}`}>
-              <span style={{ width: percentage(result.speakerSimilarity) }} />
-            </div>
-          ) : (
-            <div className="meter meter--empty" aria-label="Speaker similarity unavailable" />
-          )}
-          <small>Cross-session or enrolled-speaker match, when available</small>
-        </article>
+      <div className="signal-rail">
+        <article><span>Deepfake probability</span><strong>{percentage(result.deepfakeProbability)}</strong><div className="signal-track"><i className="signal-fill signal-fill--danger" style={{ width: percentage(result.deepfakeProbability) }} /></div><small>{isDemo ? 'Simulated' : 'Synthetic-speech likelihood'}</small></article>
+        <article><span>Speaker similarity</span><strong>{result.speakerSimilarity === null ? 'N/A' : percentage(result.speakerSimilarity)}</strong><div className="signal-track"><i className="signal-fill" style={{ width: result.speakerSimilarity === null ? '0%' : percentage(result.speakerSimilarity) }} /></div><small>{isDemo ? 'Simulated' : 'Identity consistency'}</small></article>
+        <article><span>Context flags</span><strong>{String(result.fraudIndicators.length).padStart(2, '0')}</strong><div className="context-pills">{result.fraudIndicators.map(item => <b key={item}>{humanizeSignal(item)}</b>)}</div><small>{isDemo ? 'Fixed scenario' : 'Conversation-level signals'}</small></article>
       </div>
 
-      <div className="detail-grid">
-        <article className="detail-card">
-          <p className="eyebrow">Why was this flagged?</p>
-          <h3>Explainable assessment</h3>
-          <p className="detail-copy">{explainRisk(result)}</p>
-          <div className="indicator-list" aria-label="Detected fraud indicators">
-            {result.fraudIndicators.length === 0 ? (
-              <span className="indicator indicator--quiet">No contextual fraud indicator returned</span>
-            ) : (
-              result.fraudIndicators.map((indicator) => (
-                <span className="indicator" key={indicator}>{humanizeSignal(indicator)}</span>
-              ))
-            )}
-          </div>
-        </article>
-
-        <article className="detail-card recommendation-card">
-          <p className="eyebrow">Recommended action</p>
+      <div className="result-bottom">
+        <div className="action-panel">
+          <span className="section-kicker section-kicker--danger">Recommended action</span>
           <h3>{humanizeSignal(result.recommendation)}</h3>
-          <p className="detail-copy">{recommendationCopy(result.recommendation)}</p>
-          <div className="warning-strip">
-            Do not approve payments, credentials, or privileged actions based only on this call.
-          </div>
-        </article>
+          <p>{isDemo ? 'Example safety response for this simulated high-risk case.' : 'Do not approve payments, credentials, or privileged actions based only on this call.'}</p>
+        </div>
+        <div className="evidence-panel">
+          <span className="section-kicker">Evidence fingerprint</span>
+          <code>{evidenceHash}</code>
+          <button className="copy-button" type="button" onClick={() => void copyHash()}>{copyStatus === 'copied' ? 'Copied ✓' : copyStatus === 'failed' ? 'Copy failed' : 'Copy SHA‑256'}</button>
+        </div>
       </div>
 
-      <article className="evidence-card">
-        <div>
-          <p className="eyebrow">Evidence integrity</p>
-          <h3>SHA-256 analysis fingerprint</h3>
-          <p>
-            The fingerprint is generated from the final result JSON. Raw audio is not placed on-chain by this frontend.
-          </p>
-        </div>
-        <div className="hash-panel">
-          <code>{evidenceHash}</code>
-          <button className="secondary-button" type="button" onClick={() => void copyHash()}>
-            {copyStatus === 'copied' ? 'Copied' : copyStatus === 'failed' ? 'Copy failed' : 'Copy hash'}
-          </button>
-        </div>
-      </article>
+      <dialog className="modal-sheet modal-sheet--wide" ref={reasoningDialogRef} aria-labelledby="reasoning-title">
+        <button className="modal-close" type="button" aria-label="Close" onClick={() => reasoningDialogRef.current?.close()}>×</button>
+        <span className="section-kicker">Signal rationale</span>
+        <h3 id="reasoning-title">{isDemo ? 'Simulated high-risk reasoning' : 'Why this result was produced'}</h3>
+        {isDemo && <div className="modal-callout"><strong>Not derived from your audio.</strong><span>The content below only explains the fixed interface scenario.</span></div>}
+        <p className="reasoning-copy">{explainRisk(result)}</p>
+        <div className="reasoning-metrics"><span><small>Deepfake</small><strong>{percentage(result.deepfakeProbability)}</strong></span><span><small>Speaker match</small><strong>{result.speakerSimilarity === null ? 'N/A' : percentage(result.speakerSimilarity)}</strong></span><span><small>Risk</small><strong>{Math.round(result.riskScore)}/100</strong></span></div>
+        <button className="scan-button scan-button--compact" type="button" onClick={() => reasoningDialogRef.current?.close()}>Done</button>
+      </dialog>
     </section>
   );
 }

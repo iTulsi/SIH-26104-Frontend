@@ -4,6 +4,7 @@ const apiBaseUrl = import.meta.env.VITE_ANALYSIS_API_URL?.trim().replace(/\/$/, 
 
 export const isDemoMode = !apiBaseUrl;
 
+// Deliberately synthetic: this is an interface scenario, not inference from the uploaded file.
 const demoResult: AnalysisResult = {
   riskScore: 94,
   riskLevel: 'HIGH',
@@ -15,7 +16,7 @@ const demoResult: AnalysisResult = {
 
 function waitForDemoResult(signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    const timeoutId = window.setTimeout(resolve, 900);
+    const timeoutId = window.setTimeout(resolve, 1800);
 
     signal.addEventListener(
       'abort',
