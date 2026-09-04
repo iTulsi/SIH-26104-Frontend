@@ -10,6 +10,7 @@
     "test": "node --experimental-strip-types --test src/domain/analysis.test.ts src/utils/audioValidation.test.ts"
   },
   "dependencies": {
+    "motion": "13.2.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
